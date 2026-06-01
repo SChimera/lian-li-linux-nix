@@ -2,7 +2,8 @@
 
 A Nix flake that packages [`sgtaziz/lian-li-linux`](https://github.com/sgtaziz/lian-li-linux)
 (open-source L-Connect 3 replacement: fan/RGB control + LCD streaming for Lian Li
-devices) for NixOS, since upstream ships only Arch/Debian install steps.
+devices) for NixOS. Built for my own use because upstream ships only Arch/Debian
+install steps with no Nix packaging.
 
 Pinned to upstream commit `1e665a4` (v0.6.1). Built and verified against
 nixos-26.05 (Rust 1.95).
@@ -10,12 +11,12 @@ nixos-26.05 (Rust 1.95).
 ## Status
 
 Personal config, shared as-is. It packages someone else's app for my own machine
-(a UNI FAN SL V2 on NixOS) and is published in case it saves you the same afternoon.
+(a UNI FAN SL V2 on NixOS), published in case it saves you the same afternoon.
 
-> **Note:** this flake was written largely with AI assistance (Claude) and runs on my own
-> hardware — a UNI FAN SL V2, where the daemon detects the controller and drives the fan
-> curve and RGB groups. It works for me, but it installs udev rules and runs a systemd
-> user service, so give it a read before running it on yours.
+> **Note:** this flake was written largely with AI assistance (Claude). On my hardware
+> the daemon detects the controller and drives the fan curve and RGB groups — but it
+> installs udev rules and runs a systemd user service, so give it a read before running
+> it on yours.
 
 - **Best-effort, no support guaranteed.** It may lag upstream; I bump it when I want a
   newer build.

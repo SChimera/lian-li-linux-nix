@@ -84,21 +84,29 @@ systemctl --user enable --now lianli-daemon
   desktop-mode LCD devices (HydroShift II, Lancool 207 Digital, Universal Screen
   8.8"). **Leave `false` for the UNI FAN SL V2** — it's HID-only, no virtual display.
 
-## Notes / known scope
+## Notes / scope
 
-- **UNI FAN SL V2** is HID fan + RGB only. The daemon links `libevdi` regardless
-  (upstream's `lianli-evdi` crate always links it), which is why `libevdi.nix`
-  exists — but the kernel module is never loaded for this hardware.
-- **GUI runtime libs**: `lianli-gui` is wrapped to put Wayland/X11/GL/xkbcommon on
-  `LD_LIBRARY_PATH` (Slint's winit backend dlopens them), so it should run under
-  Wayland compositors like niri — though I drive it mostly through the daemon + config.
-- **home-manager module** can't install system udev rules. If you use it instead of
-  the NixOS module, add them at the system level too:
-  `services.udev.packages = [ inputs.lian-li-linux.packages.x86_64-linux.lianli-linux ];`
-  (or apply `overlays.default` and use `pkgs.lianli-linux`). Or just use the NixOS
-  module (recommended).
-- Helper binaries are included: `bind_tool` (pair wireless devices),
-  `desktop-mode-probe`, `render-preview`.
+This packages the **whole** upstream app (fan/RGB, wireless devices, and LCD/virtual-display
+devices). A few things hold regardless of which device you have:
+
+- **`libevdi` is always a build dependency.** Upstream's `lianli-evdi` crate links
+  `libevdi.so` unconditionally, so the daemon won't compile without it — hence `libevdi.nix`
+  (a userspace-only build of it). The evdi **kernel module** is a separate, runtime-only
+  concern: off by default, needed only for desktop-mode LCD devices (HydroShift II, Lancool
+  207 Digital, Universal Screen 8.8"). Turn it on with `services.lianli.enableVirtualDisplay = true`.
+- **The GUI is wrapped for its runtime libs.** `lianli-gui` (Slint/winit) `dlopen`s
+  Wayland/X11/GL/xkbcommon at runtime, which Nix's rpath doesn't capture, so it's wrapped to
+  put them on `LD_LIBRARY_PATH`. Targets Wayland and X11 via winit.
+- **home-manager can't install system udev rules** (they're system-level). Use the NixOS
+  module, which does both, or add `services.udev.packages` yourself (see the home-manager
+  module's note).
+- **Helper binaries ship** alongside the daemon and GUI: `bind_tool` (pair wireless
+  devices), `desktop-mode-probe` (diagnose LCD/desktop-mode devices), `render-preview`
+  (preview LCD media).
+
+**Tested scope:** I only have a **UNI FAN SL V2** (HID fan + RGB), so that's all I've
+actually verified. The wireless and LCD/virtual-display paths are built but **untested by
+me** — reports/PRs welcome.
 
 ## Updating to a newer upstream commit
 

@@ -31,28 +31,13 @@
         packages = with pkgs; [
           rust-analyzer
           clippy
+          bun # frontend build (vite) + tauri dev
         ];
-        env.SLINT_NO_QT = "1";
-        # So `cargo run -p lianli-gui` from the shell can find GL/Wayland.
+        # So `cargo run -p lianli-gui` from the shell can find the dlopen'd
+        # tray-icon dependency.
         shellHook = ''
           export LD_LIBRARY_PATH=${
-            pkgs.lib.makeLibraryPath (
-              with pkgs;
-              [
-                libGL
-                libglvnd
-                wayland
-                libxkbcommon
-                fontconfig
-                freetype
-                libinput
-                libx11
-                libxcursor
-                libxrandr
-                libxi
-                libxcb
-              ]
-            )
+            pkgs.lib.makeLibraryPath (with pkgs; [ libayatana-appindicator ])
           }''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}
         '';
       };

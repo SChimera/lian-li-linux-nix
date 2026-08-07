@@ -5,8 +5,7 @@ A Nix flake that packages [`sgtaziz/lian-li-linux`](https://github.com/sgtaziz/l
 devices) for NixOS. Built for my own use because upstream ships only Arch/Debian
 install steps with no Nix packaging.
 
-Pinned to upstream commit `1e665a4` (v0.6.1). Built and verified against
-nixos-26.05 (Rust 1.95).
+Pinned to upstream `v0.8.0`. Built and verified against nixos-26.05.
 
 ## Status
 
@@ -29,7 +28,7 @@ Personal config, shared as-is. It packages someone else's app for my own machine
 
 | Output | What it is |
 | --- | --- |
-| `packages.x86_64-linux.lianli-linux` | the daemon + Slint GUI + helper bins, udev rules, desktop entry |
+| `packages.x86_64-linux.lianli-linux` | the daemon + Tauri/Vue GUI + helper bins, udev rules, desktop entry |
 | `packages.x86_64-linux.libevdi` | userspace-only libevdi (no kernel module), used as a link dep |
 | `nixosModules.default` | `services.lianli.enable` — package + udev rules + per-user daemon |
 | `homeManagerModules.default` | per-user package + daemon service (no udev — see note) |
@@ -95,9 +94,11 @@ devices). A few things hold regardless of which device you have:
   (a userspace-only build of it). The evdi **kernel module** is a separate, runtime-only
   concern: off by default, needed only for desktop-mode LCD devices (HydroShift II, Lancool
   207 Digital, Universal Screen 8.8"). Turn it on with `services.lianli.enableVirtualDisplay = true`.
-- **The GUI is wrapped for its runtime libs.** `lianli-gui` (Slint/winit) `dlopen`s
-  Wayland/X11/GL/xkbcommon at runtime, which Nix's rpath doesn't capture, so it's wrapped to
-  put them on `LD_LIBRARY_PATH`. Targets Wayland and X11 via winit.
+- **The GUI is a Tauri v2 + Vue app** (upstream switched from Slint in 0.7/0.8). The Vue
+  frontend is built at package time by a fixed-output `bunDeps` derivation (`bun install`)
+  plus a `vite build` in `preBuild`, so the main build stays offline. The webview stack
+  (webkitgtk 4.1, gtk3, libsoup 3) is linked normally; only the tray icon's
+  `libayatana-appindicator` is `dlopen`ed, so the binary is wrapped for just that.
 - **home-manager can't install system udev rules** (they're system-level). Use the NixOS
   module, which does both, or add `services.udev.packages` yourself (see the home-manager
   module's note).
@@ -111,8 +112,7 @@ me** — reports/PRs welcome.
 
 ## Updating to a newer upstream commit
 
-1. Bump `rev` (and `version`) in `package.nix`.
+1. Bump `version` (the `src` tag follows it) in `package.nix`.
 2. Set `src.hash` to `lib.fakeHash`, build, paste the reported hash back.
-3. If the slint pin changed in upstream's `Cargo.lock`, set `slintHash =
-   lib.fakeHash`, rebuild, paste the new hash. Refresh the `outputHashes` key list
-   if crate names/versions changed.
+3. If `bun.lock` changed upstream, set `bunDeps.outputHash` to `lib.fakeHash`,
+   rebuild, paste the new hash.

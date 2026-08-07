@@ -1,7 +1,8 @@
 # lian-li-linux: open-source Linux replacement for L-Connect 3.
-# Builds the daemon (HID/USB device control) and the Slint GUI.
+# Builds the daemon (HID/USB device control) and the Tauri v2 + Vue GUI.
 {
   lib,
+  stdenvNoCC,
   rustPlatform,
   fetchFromGitHub,
   callPackage,
@@ -9,7 +10,9 @@
   cmake,
   nasm,
   makeWrapper,
+  wrapGAppsHook3,
   coreutils,
+  bun,
   # link/runtime libraries
   udev,
   libusb1,
@@ -18,83 +21,63 @@
   freetype,
   libjpeg_turbo,
   libdrm,
-  wayland,
-  libxkbcommon,
-  libGL,
-  libglvnd,
-  libinput,
-  libx11,
-  libxcursor,
-  libxrandr,
-  libxi,
-  libxcb,
+  # tauri / webkit stack
+  webkitgtk_4_1,
+  gtk3,
+  glib,
+  libsoup_3,
+  librsvg,
+  libayatana-appindicator,
 }:
 let
   libevdi = callPackage ./libevdi.nix { };
-
-  # The Slint GUI uses the winit backend; its renderer dlopens GL/EGL and the
-  # windowing libs at runtime rather than linking them, so they must be on
-  # LD_LIBRARY_PATH for the wrapped binary.
-  runtimeLibs = [
-    libGL
-    libglvnd
-    wayland
-    libxkbcommon
-    fontconfig
-    freetype
-    libinput
-    libx11
-    libxcursor
-    libxrandr
-    libxi
-    libxcb
-  ];
-
-  # All 17 git-sourced crates come from a single slint-ui/slint checkout, so
-  # they share one source hash. Discover it via the fake-hash build once, then
-  # paste the real value here.
-  slintHash = "sha256-aVonGMjp2xKsLKR9MQN6gSvY3PpmZHb58GQaPmZ6EMU=";
 in
 rustPlatform.buildRustPackage (finalAttrs: {
   pname = "lian-li-linux";
-  version = "0.6.1-unstable-2026-05-30";
+  version = "0.8.0";
 
   src = fetchFromGitHub {
     owner = "sgtaziz";
     repo = "lian-li-linux";
-    rev = "1e665a4df89fda6d66b1cf7f32aade3942e9ffc0";
+    tag = "v${finalAttrs.version}";
     fetchSubmodules = true; # vendored tinyuz + HDiffPatch C++ live in submodules
-    hash = "sha256-s0+RuFV0w7xKfM53oDGjg9hR5g9OfEBa35UikXIoc8U=";
+    hash = "sha256-/A57yb3S7iDz7MAsHTKDviayNvbPO+OVf0fWYMbOY+s=";
   };
 
-  cargoLock = {
-    lockFile = finalAttrs.src + "/Cargo.lock";
-    outputHashes = {
-      "const-field-offset-0.2.0" = slintHash;
-      "const-field-offset-macro-0.2.0" = slintHash;
-      "i-slint-backend-linuxkms-1.16.0" = slintHash;
-      "i-slint-backend-selector-1.16.0" = slintHash;
-      "i-slint-backend-winit-1.16.0" = slintHash;
-      "i-slint-common-1.16.0" = slintHash;
-      "i-slint-compiler-1.16.0" = slintHash;
-      "i-slint-core-1.16.0" = slintHash;
-      "i-slint-core-macros-1.16.0" = slintHash;
-      "i-slint-renderer-femtovg-1.16.0" = slintHash;
-      "i-slint-renderer-skia-1.16.0" = slintHash;
-      "i-slint-renderer-software-1.16.0" = slintHash;
-      "slint-1.16.0" = slintHash;
-      "slint-build-1.16.0" = slintHash;
-      "slint-macros-1.16.0" = slintHash;
-      "vtable-0.4.0" = slintHash;
-      "vtable-macro-0.4.0" = slintHash;
-    };
+  # Vue frontend dependencies, fetched by bun into node_modules as a
+  # fixed-output derivation so the main build stays offline.
+  bunDeps = stdenvNoCC.mkDerivation {
+    pname = "lian-li-linux-bun-deps";
+    inherit (finalAttrs) version src;
+    nativeBuildInputs = [ bun ];
+    buildPhase = ''
+      runHook preBuild
+      cd crates/lianli-gui
+      export HOME=$TMPDIR
+      export BUN_INSTALL_CACHE_DIR=$TMPDIR/bun-cache
+      bun install --frozen-lockfile --no-progress --ignore-scripts
+      runHook postBuild
+    '';
+    installPhase = ''
+      runHook preInstall
+      mkdir -p $out
+      cp -R node_modules $out/
+      runHook postInstall
+    '';
+    dontFixup = true;
+    outputHashMode = "recursive";
+    outputHash = "sha256-TXEu+SbVPdYhcg/9eFQlxwbCHpM1nyUEHqgSfNcazKg=";
   };
+
+  cargoLock.lockFile = finalAttrs.src + "/Cargo.lock";
 
   nativeBuildInputs = [
     pkg-config
     cmake # turbojpeg-sys builds libjpeg-turbo via cmake
     nasm # ...which needs nasm for SIMD
     makeWrapper
+    wrapGAppsHook3 # gsettings schemas etc. for the webkit GUI
+    bun # runs the vite build for the Vue frontend
     rustPlatform.bindgenHook # ffmpeg-sys-next uses bindgen (sets LIBCLANG_PATH)
   ];
 
@@ -111,9 +94,31 @@ rustPlatform.buildRustPackage (finalAttrs: {
     libjpeg_turbo # turbojpeg
     libdrm
     libevdi # lianli-evdi links -levdi
-  ] ++ runtimeLibs;
+    # Tauri v2 webview stack
+    webkitgtk_4_1
+    gtk3
+    glib
+    libsoup_3
+    librsvg
+  ];
 
-  env.SLINT_NO_QT = "1";
+  # Build the frontend dist/ ourselves from the prefetched node_modules, then
+  # tell build.rs to skip its own bun-driven frontend build (which would try
+  # the network).
+  env.LIANLI_NO_FRONTEND = "1";
+
+  preBuild = ''
+    cp -R ${finalAttrs.bunDeps}/node_modules crates/lianli-gui/node_modules
+    chmod -R u+w crates/lianli-gui/node_modules
+    (
+      cd crates/lianli-gui
+      export HOME=$TMPDIR
+      # Call vite's real entry point with bun directly: the node_modules/.bin
+      # symlinks lose their relative-path context when copied out of bunDeps,
+      # and their `#!/usr/bin/env node` shebangs wouldn't resolve here anyway.
+      bun node_modules/vite/bin/vite.js build
+    )
+  '';
 
   # Tests touch real hardware / sockets; skip in the sandbox.
   doCheck = false;
@@ -147,13 +152,16 @@ rustPlatform.buildRustPackage (finalAttrs: {
       $out/share/icons/hicolor/32x32/apps/com.sgtaziz.lianlilinux.png
     install -Dm644 assets/icons/128x128.png \
       $out/share/icons/hicolor/128x128/apps/com.sgtaziz.lianlilinux.png
+    install -Dm644 "assets/icons/128x128@2x.png" \
+      $out/share/icons/hicolor/256x256/apps/com.sgtaziz.lianlilinux.png
     install -Dm644 assets/icons/icon.svg \
       $out/share/icons/hicolor/scalable/apps/com.sgtaziz.lianlilinux.svg
   '';
 
+  # tray-icon dlopens libayatana-appindicator at runtime rather than linking it.
   postFixup = ''
     wrapProgram $out/bin/lianli-gui \
-      --prefix LD_LIBRARY_PATH : "${lib.makeLibraryPath runtimeLibs}"
+      --prefix LD_LIBRARY_PATH : "${lib.makeLibraryPath [ libayatana-appindicator ]}"
   '';
 
   passthru.libevdi = libevdi;

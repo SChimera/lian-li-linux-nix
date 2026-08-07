@@ -2,7 +2,7 @@
 #
 # Enable with:  services.lianli.enable = true;
 # This installs the package, the udev rules (non-root USB access), and runs the
-# daemon as a per-user systemd service. The Slint GUI is on PATH as `lianli-gui`.
+# daemon as a per-user systemd service. The GUI is on PATH as `lianli-gui`.
 {
   config,
   lib,
